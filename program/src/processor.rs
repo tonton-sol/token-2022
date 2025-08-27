@@ -5,6 +5,9 @@ use {
         check_program_account,
         error::TokenError,
         extension::{
+            claimable_yield::{
+                self, update_account_yield, ClaimableYieldAccount, ClaimableYieldConfig,
+            },
             confidential_mint_burn::{self, ConfidentialMintBurn},
             confidential_transfer::{self, ConfidentialTransferAccount, ConfidentialTransferMint},
             confidential_transfer_fee::{
@@ -503,6 +506,29 @@ impl Processor {
             confidential_transfer_state.non_confidential_transfer_allowed()?
         }
 
+        // Handle claimable yield for source and destination accounts (if enabled)
+        if let Some((mint_info, _)) = expected_mint_info {
+            let mint_data = mint_info.try_borrow_data()?;
+            let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
+
+            // Update source account yield (calculate pending yield before balance change)
+            update_account_yield(&mut source_account, &mint)?;
+
+            // Update destination account yield (set index for new principal)
+            update_account_yield(&mut destination_account, &mint)?;
+        } else {
+            // Claimable yield accounts require TransferChecked for proper yield tracking
+            if source_account
+                .get_extension::<ClaimableYieldAccount>()
+                .is_ok()
+                || destination_account
+                    .get_extension::<ClaimableYieldAccount>()
+                    .is_ok()
+            {
+                return Err(TokenError::MintRequiredForTransfer.into());
+            }
+        }
+
         source_account.base.amount = source_amount
             .checked_sub(amount)
             .ok_or(TokenError::Overflow)?
@@ -958,6 +984,19 @@ impl Processor {
                     )?;
                     extension.authority = new_authority.try_into()?;
                 }
+                AuthorityType::ClaimableYieldIndex => {
+                    let extension = mint.get_extension_mut::<ClaimableYieldConfig>()?;
+                    let maybe_authority: Option<Pubkey> = extension.index_authority.into();
+                    let authority = maybe_authority.ok_or(TokenError::AuthorityTypeNotSupported)?;
+                    Self::validate_owner(
+                        program_id,
+                        &authority,
+                        authority_info,
+                        authority_info_data_len,
+                        account_info_iter.as_slice(),
+                    )?;
+                    extension.index_authority = new_authority.try_into()?;
+                }
                 _ => {
                     return Err(TokenError::AuthorityTypeNotSupported.into());
                 }
@@ -983,7 +1022,7 @@ impl Processor {
         let owner_info_data_len = owner_info.data_len();
 
         let mut destination_account_data = destination_account_info.data.borrow_mut();
-        let destination_account =
+        let mut destination_account =
             PodStateWithExtensionsMut::<PodAccount>::unpack(&mut destination_account_data)?;
         if destination_account.base.is_frozen() {
             return Err(TokenError::AccountFrozen.into());
@@ -1045,6 +1084,9 @@ impl Processor {
         check_program_account(mint_info.owner)?;
         check_program_account(destination_account_info.owner)?;
 
+        // Handle claimable yield for destination account (if enabled)
+        update_account_yield(&mut destination_account, &mint)?;
+
         destination_account.base.amount = u64::from(destination_account.base.amount)
             .checked_add(amount)
             .ok_or(TokenError::Overflow)?
@@ -1073,7 +1115,7 @@ impl Processor {
         let authority_info_data_len = authority_info.data_len();
 
         let mut source_account_data = source_account_info.data.borrow_mut();
-        let source_account =
+        let mut source_account =
             PodStateWithExtensionsMut::<PodAccount>::unpack(&mut source_account_data)?;
         let mut mint_data = mint_info.data.borrow_mut();
         let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
@@ -1172,6 +1214,9 @@ impl Processor {
         // if amount == 0
         check_program_account(source_account_info.owner)?;
         check_program_account(mint_info.owner)?;
+
+        // Handle claimable yield for source account (if enabled)
+        update_account_yield(&mut source_account, &mint)?;
 
         source_account.base.amount = u64::from(source_account.base.amount)
             .checked_sub(amount)
@@ -1933,6 +1978,14 @@ impl Processor {
                 PodTokenInstruction::PausableExtension => {
                     msg!("Instruction: PausableExtension");
                     pausable::processor::process_instruction(program_id, accounts, &input[1..])
+                }
+                PodTokenInstruction::ClaimableYieldExtension => {
+                    msg!("Instruction: ClaimableYieldExtension");
+                    claimable_yield::processor::process_instruction(
+                        program_id,
+                        accounts,
+                        &input[1..],
+                    )
                 }
             }
         } else if let Ok(instruction) = TokenMetadataInstruction::unpack(input) {

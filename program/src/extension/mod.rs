@@ -1,5 +1,7 @@
 //! Extensions available to token mints and accounts
 
+/// Claimable Yield extension
+pub mod claimable_yield;
 /// Confidential Transfer extension
 pub mod confidential_transfer;
 /// Confidential Transfer Fee extension
