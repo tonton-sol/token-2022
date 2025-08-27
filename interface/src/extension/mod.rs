@@ -6,6 +6,7 @@ use {
     crate::{
         error::TokenError,
         extension::{
+            claimable_yield::{ClaimableYieldAccount, ClaimableYieldConfig},
             confidential_mint_burn::ConfidentialMintBurn,
             confidential_transfer::{ConfidentialTransferAccount, ConfidentialTransferMint},
             confidential_transfer_fee::{
@@ -48,6 +49,8 @@ use {
     },
 };
 
+/// Claimable Yield extension
+pub mod claimable_yield;
 /// Confidential Transfer extension
 pub mod confidential_transfer;
 /// Confidential Transfer Fee extension
@@ -1119,6 +1122,10 @@ pub enum ExtensionType {
     Pausable,
     /// Indicates that the account belongs to a pausable mint
     PausableAccount,
+    /// Claimable yield configuration for mints
+    ClaimableYieldConfig,
+    /// Claimable yield state for token accounts
+    ClaimableYieldAccount,
 
     /// Test variable-length mint extension
     #[cfg(test)]
@@ -1204,6 +1211,8 @@ impl ExtensionType {
             ExtensionType::ScaledUiAmount => pod_get_packed_len::<ScaledUiAmountConfig>(),
             ExtensionType::Pausable => pod_get_packed_len::<PausableConfig>(),
             ExtensionType::PausableAccount => pod_get_packed_len::<PausableAccount>(),
+            ExtensionType::ClaimableYieldConfig => pod_get_packed_len::<ClaimableYieldConfig>(),
+            ExtensionType::ClaimableYieldAccount => pod_get_packed_len::<ClaimableYieldAccount>(),
             #[cfg(test)]
             ExtensionType::AccountPaddingTest => pod_get_packed_len::<AccountPaddingTest>(),
             #[cfg(test)]
@@ -1271,6 +1280,7 @@ impl ExtensionType {
             | ExtensionType::TokenGroupMember
             | ExtensionType::ScaledUiAmount
             | ExtensionType::Pausable => AccountType::Mint,
+            ExtensionType::ClaimableYieldConfig => AccountType::Mint,
             ExtensionType::ImmutableOwner
             | ExtensionType::TransferFeeAmount
             | ExtensionType::ConfidentialTransferAccount
@@ -1280,6 +1290,7 @@ impl ExtensionType {
             | ExtensionType::CpiGuard
             | ExtensionType::ConfidentialTransferFeeAmount
             | ExtensionType::PausableAccount => AccountType::Account,
+            ExtensionType::ClaimableYieldAccount => AccountType::Account,
             #[cfg(test)]
             ExtensionType::VariableLenMintTest => AccountType::Mint,
             #[cfg(test)]
