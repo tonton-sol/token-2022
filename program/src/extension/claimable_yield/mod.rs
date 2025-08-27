@@ -4,7 +4,7 @@ pub mod instruction;
 pub mod processor;
 
 pub use spl_token_2022_interface::extension::claimable_yield::{
-    ClaimableYieldAccount, ClaimableYieldConfig,
+    calculate_yield, ClaimableYieldAccount, ClaimableYieldConfig,
 };
 
 use {
@@ -17,6 +17,7 @@ use {
     },
     solana_program_error::ProgramError,
 };
+
 
 /// Updates claimable yield for an account (soft claim only)
 pub fn update_account_yield<T: BaseStateWithExtensions<PodMint>>(
@@ -32,10 +33,15 @@ pub fn update_account_yield<T: BaseStateWithExtensions<PodMint>>(
                 (yield_ext.get_local_index(), yield_ext.get_pending_amount())
             };
 
+            // Only calculate if indices differ and are valid
+            if local_index == global_index {
+                return Ok(());
+            }
+            
             let principal = account_amount
                 .checked_add(pending_amount)
                 .ok_or(TokenError::Overflow)?;
-            let calculated_yield = mint_extension.calculate_yield(principal, local_index)?;
+            let calculated_yield = calculate_yield(principal, local_index, global_index)?;
 
             let yield_ext = account.get_extension_mut::<ClaimableYieldAccount>()?;
             if calculated_yield > 0 {
