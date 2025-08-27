@@ -18,7 +18,6 @@ use {
     solana_program_error::ProgramError,
 };
 
-
 /// Updates claimable yield for an account (soft claim only)
 pub fn update_account_yield<T: BaseStateWithExtensions<PodMint>>(
     account: &mut PodStateWithExtensionsMut<PodAccount>,
@@ -37,7 +36,7 @@ pub fn update_account_yield<T: BaseStateWithExtensions<PodMint>>(
             if local_index == global_index {
                 return Ok(());
             }
-            
+
             let principal = account_amount
                 .checked_add(pending_amount)
                 .ok_or(TokenError::Overflow)?;
@@ -46,8 +45,8 @@ pub fn update_account_yield<T: BaseStateWithExtensions<PodMint>>(
             let yield_ext = account.get_extension_mut::<ClaimableYieldAccount>()?;
             if calculated_yield > 0 {
                 yield_ext.add_pending_amount(calculated_yield)?;
+                yield_ext.set_local_index(global_index);
             }
-            yield_ext.set_local_index(global_index);
         }
     }
     Ok(())
