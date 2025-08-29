@@ -127,19 +127,23 @@ impl ClaimableYieldAccount {
     }
 
     /// Accrues pending yield based on global index
-    pub fn accrue_pending_yield(&mut self, account_balance: u64, global_index: u64) -> Result<(), ProgramError> {
+    pub fn accrue_pending_yield(
+        &mut self,
+        account_balance: u64,
+        global_index: u64,
+    ) -> Result<(), ProgramError> {
         if self.get_local_index() >= global_index {
             return Ok(());
         }
-        
+
         let principal = self.get_principal(account_balance)?;
         let calculated_yield = calculate_yield(principal, self.get_local_index(), global_index)?;
-        
+
         self.add_pending_amount(calculated_yield)?;
         if calculated_yield > 0 {
             self.set_local_index(global_index);
         }
-        
+
         Ok(())
     }
 }
