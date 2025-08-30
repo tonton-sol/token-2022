@@ -6,7 +6,7 @@ use {
         error::TokenError,
         extension::{
             claimable_yield::{
-                self, update_account_yield, ClaimableYieldAccount, ClaimableYieldConfig,
+                self, checked_accrue_pending_yield, ClaimableYieldAccount, ClaimableYieldConfig,
             },
             confidential_mint_burn::{self, ConfidentialMintBurn},
             confidential_transfer::{self, ConfidentialTransferAccount, ConfidentialTransferMint},
@@ -511,19 +511,22 @@ impl Processor {
             let mint_data = mint_info.try_borrow_data()?;
             let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
 
-            // Update source account yield (calculate pending yield before balance change)
-            update_account_yield(&mut source_account, &mint)?;
+            // Update source account yield
+            checked_accrue_pending_yield(&mut source_account, &mint)?;
 
-            // Update destination account yield (set index for new principal)
-            update_account_yield(&mut destination_account, &mint)?;
+            // Update destination account yield
+            checked_accrue_pending_yield(&mut destination_account, &mint)?;
         } else {
             // Claimable yield accounts require TransferChecked for proper yield tracking
             if source_account
                 .get_extension::<ClaimableYieldAccount>()
                 .is_ok()
-                || destination_account
-                    .get_extension::<ClaimableYieldAccount>()
-                    .is_ok()
+            {
+                return Err(TokenError::MintRequiredForTransfer.into());
+            }
+            if destination_account
+                .get_extension::<ClaimableYieldAccount>()
+                .is_ok()
             {
                 return Err(TokenError::MintRequiredForTransfer.into());
             }
@@ -1084,8 +1087,8 @@ impl Processor {
         check_program_account(mint_info.owner)?;
         check_program_account(destination_account_info.owner)?;
 
-        // Handle claimable yield for destination account (if enabled)
-        update_account_yield(&mut destination_account, &mint)?;
+        // Handle claimable yield for destination account
+        checked_accrue_pending_yield(&mut destination_account, &mint)?;
 
         destination_account.base.amount = u64::from(destination_account.base.amount)
             .checked_add(amount)
@@ -1215,8 +1218,8 @@ impl Processor {
         check_program_account(source_account_info.owner)?;
         check_program_account(mint_info.owner)?;
 
-        // Handle claimable yield for source account (if enabled)
-        update_account_yield(&mut source_account, &mint)?;
+        // Handle claimable yield for source account
+        checked_accrue_pending_yield(&mut source_account, &mint)?;
 
         source_account.base.amount = u64::from(source_account.base.amount)
             .checked_sub(amount)
