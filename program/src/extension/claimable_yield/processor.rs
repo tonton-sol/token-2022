@@ -8,7 +8,7 @@ use {
                     ClaimableYieldInstruction, InitializeInstructionData,
                     UpdateIndexInstructionData,
                 },
-                update_account_yield, ClaimableYieldAccount, ClaimableYieldConfig,
+                ClaimableYieldAccount, ClaimableYieldConfig,
             },
             BaseStateWithExtensions, BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
         },
@@ -22,7 +22,6 @@ use {
     solana_pubkey::Pubkey,
     spl_pod::optional_keys::OptionalNonZeroPubkey,
 };
-
 
 fn process_initialize_mint(
     _program_id: &Pubkey,
@@ -129,10 +128,6 @@ fn process_claim_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Program
     let owner_info = next_account_info(account_info_iter)?;
     let owner_info_data_len = owner_info.data_len();
 
-    // Get mint data and global index
-    let mut mint_data = mint_account_info.data.borrow_mut();
-    let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
-
     // Get token account data
     let mut token_account_data = token_account_info.data.borrow_mut();
     let mut token_account =
@@ -147,16 +142,23 @@ fn process_claim_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Program
         account_info_iter.as_slice(),
     )?;
 
-    // Perform soft claim to update pending yield
-    update_account_yield(&mut token_account, &mint)?;
+    // Extract account amount before mutable borrow
+    let account_amount = u64::from(token_account.base.amount);
 
-    // Get total pending yield amount
-    let total_yield = {
-        let account_extension = token_account.get_extension::<ClaimableYieldAccount>()?;
-        account_extension.get_pending_amount()
-    };
+    let mut mint_data = mint_account_info.data.borrow_mut();
+    let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
 
+    // Accrue pending yield
+    let account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
+    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
+
+    account_extension.accrue_pending_yield(account_amount, mint_extension.get_global_index())?;
+
+    let total_yield = account_extension.get_pending_amount();
     if total_yield > 0 {
+        // Reset pending amount
+        account_extension.reset_pending_amount();
+
         // Update mint supply
         mint.base.supply = u64::from(mint.base.supply)
             .checked_add(total_yield)
@@ -169,10 +171,6 @@ fn process_claim_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Program
             .ok_or(TokenError::Overflow)?
             .into();
     }
-
-    // Reset pending amount after claiming (index was already updated by helper)
-    let account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
-    account_extension.reset_pending_amount();
 
     Ok(())
 }
