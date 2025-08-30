@@ -126,7 +126,7 @@ impl ClaimableYieldAccount {
             .ok_or(ProgramError::ArithmeticOverflow)
     }
 
-    /// Accrues pending yield based on global index
+    /// Accrues pending yield based on global index, local index, and principal (account balance + pending yield)
     pub fn accrue_pending_yield(
         &mut self,
         account_balance: u64,
