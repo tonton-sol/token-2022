@@ -775,6 +775,9 @@ pub trait BaseStateWithExtensionsMut<S: BaseState>: BaseStateWithExtensions<S> {
             ExtensionType::PausableAccount => {
                 self.init_extension::<PausableAccount>(true).map(|_| ())
             }
+            ExtensionType::ClaimableYieldAccount => self
+                .init_extension::<ClaimableYieldAccount>(true)
+                .map(|_| ()),
             #[cfg(test)]
             ExtensionType::AccountPaddingTest => {
                 self.init_extension::<AccountPaddingTest>(true).map(|_| ())
@@ -1318,6 +1321,9 @@ impl ExtensionType {
                 }
                 ExtensionType::Pausable => {
                     account_extension_types.push(ExtensionType::PausableAccount);
+                }
+                ExtensionType::ClaimableYieldConfig => {
+                    account_extension_types.push(ExtensionType::ClaimableYieldAccount);
                 }
                 #[cfg(test)]
                 ExtensionType::MintPaddingTest => {

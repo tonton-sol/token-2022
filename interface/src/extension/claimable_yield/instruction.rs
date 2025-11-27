@@ -11,10 +11,7 @@ use {
     solana_instruction::{AccountMeta, Instruction},
     solana_program_error::ProgramError,
     solana_pubkey::Pubkey,
-    spl_pod::{
-        optional_keys::OptionalNonZeroPubkey,
-        primitives::{PodBool, PodU64},
-    },
+    spl_pod::{optional_keys::OptionalNonZeroPubkey, primitives::PodU64},
     std::convert::TryInto,
 };
 
@@ -62,31 +59,6 @@ pub enum ClaimableYieldInstruction {
     /// Data expected by this instruction:
     ///   `crate::extension::claimable_yield::instruction::UpdateIndexInstructionData`
     UpdateIndex,
-
-    /// Configure a token account for claimable yield.
-    ///
-    /// The instruction fails if the claimable yield extension is already
-    /// configured, or if the mint was not initialized with claimable
-    /// yield support.
-    ///
-    /// The instruction fails if the `TokenInstruction::InitializeAccount`
-    /// instruction has not yet successfully executed for the token account.
-    ///
-    /// Upon success, yield accrual is enabled for this account starting
-    /// from the current global index.
-    ///
-    /// Accounts expected by this instruction:
-    ///
-    ///   0. `[writable]` The token account to configure.
-    ///   1. `[]` The mint account (to read global index).
-    ///   2. `[signer]` The account's owner.
-    ///
-    ///   * Multisignature authority
-    ///   0. `[writable]` The token account to configure.
-    ///   1. `[]` The mint account.
-    ///   2. `[]` The account's multisignature owner.
-    ///   3. `..3+M` `[signer]` M signer accounts.
-    ConfigureAccount,
 
     /// Claim all accrued yield for a token account.
     ///
@@ -138,16 +110,6 @@ pub struct UpdateIndexInstructionData {
     pub new_index: PodU64,
 }
 
-/// Data expected by `ClaimableYieldInstruction::ConfigureAccount`
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-#[derive(Clone, Copy, Pod, Zeroable)]
-#[repr(C)]
-pub struct ConfigureAccountInstructionData {
-    /// Whether the account owner is eligible to collect yield
-    pub yield_eligible: PodBool,
-}
-
 /// Create an `InitializeMint` instruction
 pub fn initialize_mint(
     token_program_id: &Pubkey,
@@ -194,35 +156,6 @@ pub fn update_index(
         ClaimableYieldInstruction::UpdateIndex,
         &UpdateIndexInstructionData {
             new_index: new_index.into(),
-        },
-    ))
-}
-
-/// Create a `ConfigureAccount` instruction
-pub fn configure_account(
-    token_program_id: &Pubkey,
-    account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
-    signers: &[&Pubkey],
-    yield_eligible: bool,
-) -> Result<Instruction, ProgramError> {
-    check_program_account(token_program_id)?;
-    let mut accounts = vec![
-        AccountMeta::new(*account, false),
-        AccountMeta::new_readonly(*mint, false),
-        AccountMeta::new_readonly(*owner, signers.is_empty()),
-    ];
-    for signer_pubkey in signers.iter() {
-        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
-    }
-    Ok(encode_instruction(
-        token_program_id,
-        accounts,
-        TokenInstruction::ClaimableYieldExtension,
-        ClaimableYieldInstruction::ConfigureAccount,
-        &ConfigureAccountInstructionData {
-            yield_eligible: PodBool::from(yield_eligible),
         },
     ))
 }

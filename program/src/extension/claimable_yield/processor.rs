@@ -79,50 +79,6 @@ fn process_update_index(
     Ok(())
 }
 
-fn process_configure_account(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let token_account_info = next_account_info(account_info_iter)?;
-    let mint_account_info = next_account_info(account_info_iter)?;
-    let owner_info = next_account_info(account_info_iter)?;
-    let owner_info_data_len = owner_info.data_len();
-
-    // First, get the global index from the mint
-    let mut mint_data = mint_account_info.data.borrow_mut();
-    let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
-    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
-    let global_index = mint_extension.get_global_index();
-    drop(mint_data);
-
-    // Now configure the token account
-    let mut token_account_data = token_account_info.data.borrow_mut();
-    let mut token_account =
-        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
-
-    // Validate owner
-    Processor::validate_owner(
-        program_id,
-        &token_account.base.owner,
-        owner_info,
-        owner_info_data_len,
-        account_info_iter.as_slice(),
-    )?;
-
-    // Check if extension already exists
-    if token_account
-        .get_extension::<ClaimableYieldAccount>()
-        .is_ok()
-    {
-        return Err(TokenError::ExtensionAlreadyInitialized.into());
-    }
-
-    // Initialize the extension with current global index
-    let extension = token_account.init_extension::<ClaimableYieldAccount>(false)?;
-    extension.set_local_index(global_index);
-    extension.set_pending_amount(0);
-
-    Ok(())
-}
-
 fn process_claim_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let token_account_info = next_account_info(account_info_iter)?;
@@ -228,10 +184,6 @@ pub(crate) fn process_instruction(
             msg!("ClaimableYieldInstruction::UpdateIndex");
             let UpdateIndexInstructionData { new_index } = decode_instruction_data(input)?;
             process_update_index(program_id, accounts, u64::from(*new_index))
-        }
-        ClaimableYieldInstruction::ConfigureAccount => {
-            msg!("ClaimableYieldInstruction::ConfigureAccount");
-            process_configure_account(program_id, accounts)
         }
         ClaimableYieldInstruction::ClaimYield => {
             msg!("ClaimableYieldInstruction::ClaimYield");
