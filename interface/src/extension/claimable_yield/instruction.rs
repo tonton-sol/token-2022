@@ -63,6 +63,31 @@ pub enum ClaimableYieldInstruction {
     ///   3. `..3+M` `[signer]` M signer accounts.
     EnableYield,
 
+    /// Disable yield eligibility for a token account.
+    ///
+    /// This instruction allows the yield authority to revoke yield claim eligibility
+    /// from a token account. Once disabled, only the yield authority can claim yield
+    /// for this account.
+    ///
+    /// Fails if:
+    /// - No yield authority is set on the mint
+    /// - The account is already not yield-eligible
+    /// - The signer is not the yield authority
+    ///
+    /// Accounts expected by this instruction:
+    ///
+    ///   * Single authority
+    ///   0. `[writable]` The token account to disable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[signer]` The mint's yield authority.
+    ///
+    ///   * Multisignature authority
+    ///   0. `[writable]` The token account to disable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[]` The mint's multisignature yield authority.
+    ///   3. `..3+M` `[signer]` M signer accounts.
+    DisableYield,
+
     /// Update the global yield index. Only supported for mints that include the
     /// `ClaimableYield` extension.
     ///
@@ -180,6 +205,32 @@ pub fn enable_yield(
         accounts,
         TokenInstruction::ClaimableYieldExtension,
         ClaimableYieldInstruction::EnableYield,
+        &{},
+    ))
+}
+
+/// Create a `DisableYield` instruction
+pub fn disable_yield(
+    token_program_id: &Pubkey,
+    account: &Pubkey,
+    mint: &Pubkey,
+    yield_authority: &Pubkey,
+    signers: &[&Pubkey],
+) -> Result<Instruction, ProgramError> {
+    check_program_account(token_program_id)?;
+    let mut accounts = vec![
+        AccountMeta::new(*account, false),
+        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(*yield_authority, signers.is_empty()),
+    ];
+    for signer_pubkey in signers.iter() {
+        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
+    }
+    Ok(encode_instruction(
+        token_program_id,
+        accounts,
+        TokenInstruction::ClaimableYieldExtension,
+        ClaimableYieldInstruction::DisableYield,
         &{},
     ))
 }
