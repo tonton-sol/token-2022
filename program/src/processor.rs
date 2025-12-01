@@ -201,6 +201,11 @@ impl Processor {
                 account.get_extension_mut::<ClaimableYieldAccount>()
             {
                 account_yield_extension.set_local_index(mint_yield_config.get_global_index());
+
+                // If no yield authority is set, account is eligible by default (permissionless)
+                let yield_eligible =
+                    Option::<Pubkey>::from(mint_yield_config.yield_authority).is_none();
+                account_yield_extension.set_yield_eligible(yield_eligible);
             }
         }
 
