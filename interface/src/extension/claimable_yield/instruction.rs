@@ -38,6 +38,31 @@ pub enum ClaimableYieldInstruction {
     ///   `crate::extension::claimable_yield::instruction::InitializeInstructionData`
     InitializeMint,
 
+    /// Enable yield eligibility for a token account.
+    ///
+    /// This instruction allows the yield authority to mark a token account as
+    /// eligible for yield claims. Once enabled, the token account owner can claim yield
+    /// directly without needing the yield authority's signature.
+    ///
+    /// Fails if:
+    /// - No yield authority is set on the mint
+    /// - The account is already yield-eligible
+    /// - The signer is not the yield authority
+    ///
+    /// Accounts expected by this instruction:
+    ///
+    ///   * Single authority
+    ///   0. `[writable]` The token account to enable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[signer]` The mint's yield authority.
+    ///
+    ///   * Multisignature authority
+    ///   0. `[writable]` The token account to enable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[]` The mint's multisignature yield authority.
+    ///   3. `..3+M` `[signer]` M signer accounts.
+    EnableYield,
+
     /// Update the global yield index. Only supported for mints that include the
     /// `ClaimableYield` extension.
     ///
@@ -130,6 +155,32 @@ pub fn initialize_mint(
             index_authority: index_authority.try_into()?,
             initial_index: initial_index.into(),
         },
+    ))
+}
+
+/// Create an `EnableYield` instruction
+pub fn enable_yield(
+    token_program_id: &Pubkey,
+    account: &Pubkey,
+    mint: &Pubkey,
+    yield_authority: &Pubkey,
+    signers: &[&Pubkey],
+) -> Result<Instruction, ProgramError> {
+    check_program_account(token_program_id)?;
+    let mut accounts = vec![
+        AccountMeta::new(*account, false),
+        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(*yield_authority, signers.is_empty()),
+    ];
+    for signer_pubkey in signers.iter() {
+        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
+    }
+    Ok(encode_instruction(
+        token_program_id,
+        accounts,
+        TokenInstruction::ClaimableYieldExtension,
+        ClaimableYieldInstruction::EnableYield,
+        &{},
     ))
 }
 

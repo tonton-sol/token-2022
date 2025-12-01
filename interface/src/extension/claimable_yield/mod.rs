@@ -94,6 +94,11 @@ impl ClaimableYieldAccount {
         self.yield_eligible = PodBool::from(eligible);
     }
 
+    /// Gets the yield eligibility status
+    pub fn get_yield_eligible(&self) -> bool {
+        self.yield_eligible.into()
+    }
+
     /// Get the pending amount as a u64
     pub fn get_pending_amount(&self) -> u64 {
         self.pending_amount.into()

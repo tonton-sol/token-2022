@@ -21,6 +21,7 @@ use {
     solana_program_error::ProgramResult,
     solana_pubkey::Pubkey,
     spl_pod::optional_keys::OptionalNonZeroPubkey,
+    spl_token_2022_interface::extension::PodStateWithExtensions,
 };
 
 fn process_initialize_mint(
@@ -40,6 +41,46 @@ fn process_initialize_mint(
     extension.yield_authority = *yield_authority;
     extension.index_authority = *index_authority;
     extension.set_global_index(initial_index);
+
+    Ok(())
+}
+
+fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let token_account_info = next_account_info(account_info_iter)?;
+    let mint_account_info = next_account_info(account_info_iter)?;
+    let yield_authority_account_info = next_account_info(account_info_iter)?;
+    let yield_authority_info_data_len = yield_authority_account_info.data_len();
+
+    let mut token_account_data = token_account_info.data.borrow_mut();
+    let mut token_account =
+        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
+    if token_account.base.mint != *mint_account_info.key {
+        return Err(TokenError::MintMismatch.into());
+    }
+    let token_account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
+
+    let mint_data = mint_account_info.data.borrow();
+    let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
+    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
+
+    let authority = Option::<Pubkey>::from(mint_extension.yield_authority)
+        .ok_or(TokenError::NoAuthorityExists)?;
+
+    Processor::validate_owner(
+        program_id,
+        &authority,
+        yield_authority_account_info,
+        yield_authority_info_data_len,
+        account_info_iter.as_slice(),
+    )?;
+
+    // If account is already flagged eligible, return an error
+    if token_account_extension.get_yield_eligible() {
+        return Err(TokenError::InvalidState.into());
+    }
+
+    token_account_extension.set_yield_eligible(true);
 
     Ok(())
 }
@@ -179,6 +220,10 @@ pub(crate) fn process_instruction(
                 index_authority,
                 u64::from(*initial_index),
             )
+        }
+        ClaimableYieldInstruction::EnableYield => {
+            msg!("ClaimableYieldInstruction::EnableYield");
+            process_enable_yield(program_id, accounts)
         }
         ClaimableYieldInstruction::UpdateIndex => {
             msg!("ClaimableYieldInstruction::UpdateIndex");
