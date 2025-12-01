@@ -1162,6 +1162,8 @@ pub enum AuthorityType {
     Pause,
     /// Authority to update the global yield index
     ClaimableYieldIndex,
+    /// Authority to change the mint's yield admin
+    ClaimableYieldAdmin,
 }
 
 impl AuthorityType {
@@ -1185,6 +1187,7 @@ impl AuthorityType {
             AuthorityType::ScaledUiAmount => 15,
             AuthorityType::Pause => 16,
             AuthorityType::ClaimableYieldIndex => 17,
+            AuthorityType::ClaimableYieldAdmin => 18,
         }
     }
 
@@ -1209,6 +1212,7 @@ impl AuthorityType {
             15 => Ok(AuthorityType::ScaledUiAmount),
             16 => Ok(AuthorityType::Pause),
             17 => Ok(AuthorityType::ClaimableYieldIndex),
+            18 => Ok(AuthorityType::ClaimableYieldAdmin),
             _ => Err(TokenError::InvalidInstruction.into()),
         }
     }
