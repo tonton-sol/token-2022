@@ -64,6 +64,11 @@ fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progra
     }
     let token_account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
 
+    // If account is already flagged eligible, return an error
+    if token_account_extension.get_yield_eligible() {
+        return Err(TokenError::InvalidState.into());
+    }
+
     let mint_data = mint_account_info.data.borrow();
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
@@ -89,11 +94,6 @@ fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progra
                 account_info_iter.as_slice(),
             )?;
         }
-    }
-
-    // If account is already flagged eligible, return an error
-    if token_account_extension.get_yield_eligible() {
-        return Err(TokenError::InvalidState.into());
     }
 
     token_account_extension.set_yield_eligible(true);
@@ -118,6 +118,11 @@ fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     }
     let token_account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
 
+    // If account is already not eligible, return an error
+    if !token_account_extension.get_yield_eligible() {
+        return Err(TokenError::InvalidState.into());
+    }
+
     let mint_data = mint_account_info.data.borrow();
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
@@ -143,11 +148,6 @@ fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
                 account_info_iter.as_slice(),
             )?;
         }
-    }
-
-    // If account is already not eligible, return an error
-    if !token_account_extension.get_yield_eligible() {
-        return Err(TokenError::InvalidState.into());
     }
 
     token_account_extension.set_yield_eligible(false);
