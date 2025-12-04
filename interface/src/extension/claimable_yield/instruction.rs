@@ -40,51 +40,56 @@ pub enum ClaimableYieldInstruction {
 
     /// Enable yield eligibility for a token account.
     ///
-    /// This instruction allows the yield authority to mark a token account as
-    /// eligible for yield claims. Once enabled, the token account owner can claim yield
-    /// directly without needing the yield authority's signature.
+    /// This instruction allows marking a token account as eligible for yield claims.
+    /// Once enabled, the token account owner can claim yield directly.
+    ///
+    /// Authorization:
+    /// - If a yield authority is set on the mint, the yield authority must sign
+    /// - If no yield authority is set, the token account owner must sign
     ///
     /// Fails if:
-    /// - No yield authority is set on the mint
     /// - The account is already yield-eligible
-    /// - The signer is not the yield authority
+    /// - The signer is not the required authority (yield authority or owner)
     ///
     /// Accounts expected by this instruction:
     ///
     ///   * Single authority
     ///   0. `[writable]` The token account to enable yield for.
     ///   1. `[]` The mint account.
-    ///   2. `[signer]` The mint's yield authority.
+    ///   2. `[signer]` The yield authority (if set) or token account owner (if not).
     ///
     ///   * Multisignature authority
     ///   0. `[writable]` The token account to enable yield for.
     ///   1. `[]` The mint account.
-    ///   2. `[]` The mint's multisignature yield authority.
+    ///   2. `[]` The multisignature yield authority or token account owner.
     ///   3. `..3+M` `[signer]` M signer accounts.
     EnableYield,
 
     /// Disable yield eligibility for a token account.
     ///
-    /// This instruction allows the yield authority to revoke yield claim eligibility
-    /// from a token account. Once disabled, only the yield authority can claim yield
-    /// for this account.
+    /// This instruction allows revoking yield claim eligibility from a token account.
+    /// Once disabled, the account owner cannot claim yield directly using ClaimYieldTo
+    /// unless a yield authority exists to authorize the claim.
+    ///
+    /// Authorization:
+    /// - If a yield authority is set on the mint, the yield authority must sign
+    /// - If no yield authority is set, the token account owner must sign
     ///
     /// Fails if:
-    /// - No yield authority is set on the mint
     /// - The account is already not yield-eligible
-    /// - The signer is not the yield authority
+    /// - The signer is not the required authority (yield authority or owner)
     ///
     /// Accounts expected by this instruction:
     ///
     ///   * Single authority
     ///   0. `[writable]` The token account to disable yield for.
     ///   1. `[]` The mint account.
-    ///   2. `[signer]` The mint's yield authority.
+    ///   2. `[signer]` The yield authority (if set) or token account owner (if not).
     ///
     ///   * Multisignature authority
     ///   0. `[writable]` The token account to disable yield for.
     ///   1. `[]` The mint account.
-    ///   2. `[]` The mint's multisignature yield authority.
+    ///   2. `[]` The multisignature yield authority or token account owner.
     ///   3. `..3+M` `[signer]` M signer accounts.
     DisableYield,
 

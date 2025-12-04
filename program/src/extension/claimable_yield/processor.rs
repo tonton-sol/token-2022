@@ -51,12 +51,14 @@ fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progra
     let account_info_iter = &mut accounts.iter();
     let token_account_info = next_account_info(account_info_iter)?;
     let mint_account_info = next_account_info(account_info_iter)?;
-    let yield_authority_account_info = next_account_info(account_info_iter)?;
-    let yield_authority_info_data_len = yield_authority_account_info.data_len();
+    let authority_account_info = next_account_info(account_info_iter)?;
+    let authority_info_data_len = authority_account_info.data_len();
 
     let mut token_account_data = token_account_info.data.borrow_mut();
     let mut token_account =
         PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
+    let token_account_owner = token_account.base.owner;
+
     if token_account.base.mint != *mint_account_info.key {
         return Err(TokenError::MintMismatch.into());
     }
@@ -66,16 +68,28 @@ fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progra
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
 
-    let authority = Option::<Pubkey>::from(mint_extension.yield_authority)
-        .ok_or(TokenError::NoAuthorityExists)?;
-
-    Processor::validate_owner(
-        program_id,
-        &authority,
-        yield_authority_account_info,
-        yield_authority_info_data_len,
-        account_info_iter.as_slice(),
-    )?;
+    match Option::<Pubkey>::from(mint_extension.yield_authority) {
+        Some(yield_authority) => {
+            // Yield authority is set, require yield authority signature
+            Processor::validate_owner(
+                program_id,
+                &yield_authority,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+        None => {
+            // No yield authority set, require token account owner signature
+            Processor::validate_owner(
+                program_id,
+                &token_account_owner,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+    }
 
     // If account is already flagged eligible, return an error
     if token_account_extension.get_yield_eligible() {
@@ -91,12 +105,14 @@ fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     let account_info_iter = &mut accounts.iter();
     let token_account_info = next_account_info(account_info_iter)?;
     let mint_account_info = next_account_info(account_info_iter)?;
-    let yield_authority_account_info = next_account_info(account_info_iter)?;
-    let yield_authority_info_data_len = yield_authority_account_info.data_len();
+    let authority_account_info = next_account_info(account_info_iter)?;
+    let authority_info_data_len = authority_account_info.data_len();
 
     let mut token_account_data = token_account_info.data.borrow_mut();
     let mut token_account =
         PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
+    let token_account_owner = token_account.base.owner;
+
     if token_account.base.mint != *mint_account_info.key {
         return Err(TokenError::MintMismatch.into());
     }
@@ -106,16 +122,28 @@ fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
 
-    let authority = Option::<Pubkey>::from(mint_extension.yield_authority)
-        .ok_or(TokenError::NoAuthorityExists)?;
-
-    Processor::validate_owner(
-        program_id,
-        &authority,
-        yield_authority_account_info,
-        yield_authority_info_data_len,
-        account_info_iter.as_slice(),
-    )?;
+    match Option::<Pubkey>::from(mint_extension.yield_authority) {
+        Some(yield_authority) => {
+            // Yield authority is set, require yield authority signature
+            Processor::validate_owner(
+                program_id,
+                &yield_authority,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+        None => {
+            // No yield authority set, require token account owner signature
+            Processor::validate_owner(
+                program_id,
+                &token_account_owner,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+    }
 
     // If account is already not eligible, return an error
     if !token_account_extension.get_yield_eligible() {
