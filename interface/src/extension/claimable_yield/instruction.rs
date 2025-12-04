@@ -153,7 +153,9 @@ pub enum ClaimableYieldInstruction {
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct InitializeInstructionData {
-    /// The public key for the account which has authority over which accounts can claim yield. If None, token account owners may always claim yield.
+    /// The public key for the account which has the right to claim accrued yield for any token accounts not flagged as yield eligible. If None, any yield accrued to ineligible accounts will be lost.
+    pub claim_authority: OptionalNonZeroPubkey,
+    /// The public key for the account which has authority over which accounts can claim yield. If None, token account owners may always opt in/out of yield claiming.
     pub yield_authority: OptionalNonZeroPubkey,
     /// The public key for the account that can update the global index
     pub index_authority: OptionalNonZeroPubkey,
@@ -175,6 +177,7 @@ pub struct UpdateIndexInstructionData {
 pub fn initialize_mint(
     token_program_id: &Pubkey,
     mint: &Pubkey,
+    claim_authority: Option<Pubkey>,
     yield_authority: Option<Pubkey>,
     index_authority: Option<Pubkey>,
     initial_index: u64,
@@ -187,6 +190,7 @@ pub fn initialize_mint(
         TokenInstruction::ClaimableYieldExtension,
         ClaimableYieldInstruction::InitializeMint,
         &InitializeInstructionData {
+            claim_authority: claim_authority.try_into()?,
             yield_authority: yield_authority.try_into()?,
             index_authority: index_authority.try_into()?,
             initial_index: initial_index.into(),

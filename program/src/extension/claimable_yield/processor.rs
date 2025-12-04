@@ -27,6 +27,7 @@ use {
 fn process_initialize_mint(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
+    claim_authority: &OptionalNonZeroPubkey,
     yield_authority: &OptionalNonZeroPubkey,
     index_authority: &OptionalNonZeroPubkey,
     initial_index: u64,
@@ -38,6 +39,7 @@ fn process_initialize_mint(
     let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack_uninitialized(&mut mint_data)?;
 
     let extension = mint.init_extension::<ClaimableYieldConfig>(true)?;
+    extension.claim_authority = *claim_authority;
     extension.yield_authority = *yield_authority;
     extension.index_authority = *index_authority;
     extension.set_global_index(initial_index);
@@ -202,13 +204,13 @@ fn process_claim_yield_to(program_id: &Pubkey, accounts: &[AccountInfo]) -> Prog
             account_info_iter.as_slice(),
         )?;
     } else {
-        // Source account is not yield eligible, the mint yield authority must exist and be the signer
-        let yield_authority = Option::<Pubkey>::from(mint_extension.yield_authority)
+        // Source account is not yield eligible, the mint claim authority must exist and be the signer
+        let claim_authority = Option::<Pubkey>::from(mint_extension.claim_authority)
             .ok_or(TokenError::NoAuthorityExists)?;
 
         Processor::validate_owner(
             program_id,
-            &yield_authority,
+            &claim_authority,
             authority_info,
             authority_info_data_len,
             account_info_iter.as_slice(),
@@ -246,6 +248,7 @@ pub(crate) fn process_instruction(
         ClaimableYieldInstruction::InitializeMint => {
             msg!("ClaimableYieldInstruction::InitializeMint");
             let InitializeInstructionData {
+                claim_authority,
                 yield_authority,
                 index_authority,
                 initial_index,
@@ -253,6 +256,7 @@ pub(crate) fn process_instruction(
             process_initialize_mint(
                 program_id,
                 accounts,
+                claim_authority,
                 yield_authority,
                 index_authority,
                 u64::from(*initial_index),

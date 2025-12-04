@@ -46,6 +46,10 @@ pub fn calculate_yield(
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct ClaimableYieldConfig {
+    /// Who is allowed to actually lcaim
+    /// If token account is opted out, this would be eligible to claim, whether a "yield auth" is defined or not
+    pub claim_authority: OptionalNonZeroPubkey,
+    /// Who can flip the "yield eligible" bool
     /// Authority which determines which accounts can claim yield
     pub yield_authority: OptionalNonZeroPubkey,
     /// Authority that can update the global index
