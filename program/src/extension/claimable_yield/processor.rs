@@ -21,11 +21,14 @@ use {
     solana_program_error::ProgramResult,
     solana_pubkey::Pubkey,
     spl_pod::optional_keys::OptionalNonZeroPubkey,
+    spl_token_2022_interface::extension::PodStateWithExtensions,
 };
 
 fn process_initialize_mint(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
+    claim_authority: &OptionalNonZeroPubkey,
+    eligibility_authority: &OptionalNonZeroPubkey,
     index_authority: &OptionalNonZeroPubkey,
     initial_index: u64,
 ) -> ProgramResult {
@@ -36,8 +39,118 @@ fn process_initialize_mint(
     let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack_uninitialized(&mut mint_data)?;
 
     let extension = mint.init_extension::<ClaimableYieldConfig>(true)?;
+    extension.claim_authority = *claim_authority;
+    extension.eligibility_authority = *eligibility_authority;
     extension.index_authority = *index_authority;
     extension.set_global_index(initial_index);
+
+    Ok(())
+}
+
+fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let token_account_info = next_account_info(account_info_iter)?;
+    let mint_account_info = next_account_info(account_info_iter)?;
+    let authority_account_info = next_account_info(account_info_iter)?;
+    let authority_info_data_len = authority_account_info.data_len();
+
+    let mut token_account_data = token_account_info.data.borrow_mut();
+    let mut token_account =
+        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
+    let token_account_owner = token_account.base.owner;
+
+    if token_account.base.mint != *mint_account_info.key {
+        return Err(TokenError::MintMismatch.into());
+    }
+    let token_account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
+
+    // If account is already flagged eligible, return an error
+    if token_account_extension.get_yield_eligible() {
+        return Err(TokenError::InvalidState.into());
+    }
+
+    let mint_data = mint_account_info.data.borrow();
+    let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
+    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
+
+    match Option::<Pubkey>::from(mint_extension.eligibility_authority) {
+        Some(eligibility_authority) => {
+            // Yield authority is set, require yield authority signature
+            Processor::validate_owner(
+                program_id,
+                &eligibility_authority,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+        None => {
+            // No yield authority set, require token account owner signature
+            Processor::validate_owner(
+                program_id,
+                &token_account_owner,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+    }
+
+    token_account_extension.set_yield_eligible(true);
+
+    Ok(())
+}
+
+fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let token_account_info = next_account_info(account_info_iter)?;
+    let mint_account_info = next_account_info(account_info_iter)?;
+    let authority_account_info = next_account_info(account_info_iter)?;
+    let authority_info_data_len = authority_account_info.data_len();
+
+    let mut token_account_data = token_account_info.data.borrow_mut();
+    let mut token_account =
+        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
+    let token_account_owner = token_account.base.owner;
+
+    if token_account.base.mint != *mint_account_info.key {
+        return Err(TokenError::MintMismatch.into());
+    }
+    let token_account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
+
+    // If account is already not eligible, return an error
+    if !token_account_extension.get_yield_eligible() {
+        return Err(TokenError::InvalidState.into());
+    }
+
+    let mint_data = mint_account_info.data.borrow();
+    let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
+    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
+
+    match Option::<Pubkey>::from(mint_extension.eligibility_authority) {
+        Some(eligibility_authority) => {
+            // Yield authority is set, require yield authority signature
+            Processor::validate_owner(
+                program_id,
+                &eligibility_authority,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+        None => {
+            // No yield authority set, require token account owner signature
+            Processor::validate_owner(
+                program_id,
+                &token_account_owner,
+                authority_account_info,
+                authority_info_data_len,
+                account_info_iter.as_slice(),
+            )?;
+        }
+    }
+
+    token_account_extension.set_yield_eligible(false);
 
     Ok(())
 }
@@ -77,96 +190,74 @@ fn process_update_index(
     Ok(())
 }
 
-fn process_configure_account(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn process_claim_yield_to(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
-    let token_account_info = next_account_info(account_info_iter)?;
+    let source_account_info = next_account_info(account_info_iter)?;
+    let target_account_info = next_account_info(account_info_iter)?;
     let mint_account_info = next_account_info(account_info_iter)?;
-    let owner_info = next_account_info(account_info_iter)?;
-    let owner_info_data_len = owner_info.data_len();
+    let authority_info = next_account_info(account_info_iter)?;
+    let authority_info_data_len = authority_info.data_len();
 
-    // First, get the global index from the mint
-    let mut mint_data = mint_account_info.data.borrow_mut();
-    let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
-    let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
-    let global_index = mint_extension.get_global_index();
-    drop(mint_data);
+    let mut source_account_data = source_account_info.data.borrow_mut();
+    let mut source_account =
+        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut source_account_data)?;
+    // Extract source amount and owner before mutable borrow
+    let source_account_owner = source_account.base.owner;
+    let source_account_amount = u64::from(source_account.base.amount);
 
-    // Now configure the token account
-    let mut token_account_data = token_account_info.data.borrow_mut();
-    let mut token_account =
-        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
-
-    // Validate owner
-    Processor::validate_owner(
-        program_id,
-        &token_account.base.owner,
-        owner_info,
-        owner_info_data_len,
-        account_info_iter.as_slice(),
-    )?;
-
-    // Check if extension already exists
-    if token_account
-        .get_extension::<ClaimableYieldAccount>()
-        .is_ok()
-    {
-        return Err(TokenError::ExtensionAlreadyInitialized.into());
+    if source_account.base.mint != *mint_account_info.key {
+        return Err(TokenError::MintMismatch.into());
     }
 
-    // Initialize the extension with current global index
-    let extension = token_account.init_extension::<ClaimableYieldAccount>(false)?;
-    extension.set_local_index(global_index);
-    extension.set_pending_amount(0);
+    let mut target_account_data = target_account_info.data.borrow_mut();
+    let target_account = PodStateWithExtensionsMut::<PodAccount>::unpack(&mut target_account_data)?;
 
-    Ok(())
-}
-
-fn process_claim_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let token_account_info = next_account_info(account_info_iter)?;
-    let mint_account_info = next_account_info(account_info_iter)?;
-    let owner_info = next_account_info(account_info_iter)?;
-    let owner_info_data_len = owner_info.data_len();
-
-    // Get token account data
-    let mut token_account_data = token_account_info.data.borrow_mut();
-    let mut token_account =
-        PodStateWithExtensionsMut::<PodAccount>::unpack(&mut token_account_data)?;
-
-    // Validate owner
-    Processor::validate_owner(
-        program_id,
-        &token_account.base.owner,
-        owner_info,
-        owner_info_data_len,
-        account_info_iter.as_slice(),
-    )?;
-
-    // Extract account amount before mutable borrow
-    let account_amount = u64::from(token_account.base.amount);
+    if target_account.base.mint != *mint_account_info.key {
+        return Err(TokenError::MintMismatch.into());
+    }
 
     let mut mint_data = mint_account_info.data.borrow_mut();
     let mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
-
-    // Accrue pending yield
-    let account_extension = token_account.get_extension_mut::<ClaimableYieldAccount>()?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
 
-    account_extension.accrue_pending_yield(account_amount, mint_extension.get_global_index())?;
+    let source_extension = source_account.get_extension_mut::<ClaimableYieldAccount>()?;
 
-    let total_yield = account_extension.get_pending_amount();
+    if source_extension.get_yield_eligible() {
+        // Source account is yield eligible, the token account owner must be the signer
+        Processor::validate_owner(
+            program_id,
+            &source_account_owner,
+            authority_info,
+            authority_info_data_len,
+            account_info_iter.as_slice(),
+        )?;
+    } else {
+        // Source account is not yield eligible, the mint claim authority must exist and be the signer
+        let claim_authority = Option::<Pubkey>::from(mint_extension.claim_authority)
+            .ok_or(TokenError::NoAuthorityExists)?;
+
+        Processor::validate_owner(
+            program_id,
+            &claim_authority,
+            authority_info,
+            authority_info_data_len,
+            account_info_iter.as_slice(),
+        )?;
+    }
+
+    source_extension
+        .accrue_pending_yield(source_account_amount, mint_extension.get_global_index())?;
+
+    let total_yield = source_extension.get_pending_amount();
     if total_yield > 0 {
-        // Reset pending amount
-        account_extension.reset_pending_amount();
+        source_extension.reset_pending_amount();
 
-        // Update mint supply
         mint.base.supply = u64::from(mint.base.supply)
             .checked_add(total_yield)
             .ok_or(TokenError::Overflow)?
             .into();
 
-        // Update token account balance
-        token_account.base.amount = u64::from(token_account.base.amount)
+        target_account.base.amount = u64::from(target_account.base.amount)
             .checked_add(total_yield)
             .ok_or(TokenError::Overflow)?
             .into();
@@ -185,28 +276,36 @@ pub(crate) fn process_instruction(
         ClaimableYieldInstruction::InitializeMint => {
             msg!("ClaimableYieldInstruction::InitializeMint");
             let InitializeInstructionData {
+                claim_authority,
+                eligibility_authority,
                 index_authority,
                 initial_index,
             } = decode_instruction_data(input)?;
             process_initialize_mint(
                 program_id,
                 accounts,
+                claim_authority,
+                eligibility_authority,
                 index_authority,
                 u64::from(*initial_index),
             )
+        }
+        ClaimableYieldInstruction::EnableYield => {
+            msg!("ClaimableYieldInstruction::EnableYield");
+            process_enable_yield(program_id, accounts)
+        }
+        ClaimableYieldInstruction::DisableYield => {
+            msg!("ClaimableYieldInstruction::DisableYield");
+            process_disable_yield(program_id, accounts)
+        }
+        ClaimableYieldInstruction::ClaimYieldTo => {
+            msg!("ClaimableYieldInstruction::ClaimYieldTo");
+            process_claim_yield_to(program_id, accounts)
         }
         ClaimableYieldInstruction::UpdateIndex => {
             msg!("ClaimableYieldInstruction::UpdateIndex");
             let UpdateIndexInstructionData { new_index } = decode_instruction_data(input)?;
             process_update_index(program_id, accounts, u64::from(*new_index))
-        }
-        ClaimableYieldInstruction::ConfigureAccount => {
-            msg!("ClaimableYieldInstruction::ConfigureAccount");
-            process_configure_account(program_id, accounts)
-        }
-        ClaimableYieldInstruction::ClaimYield => {
-            msg!("ClaimableYieldInstruction::ClaimYield");
-            process_claim_yield(program_id, accounts)
         }
     }
 }

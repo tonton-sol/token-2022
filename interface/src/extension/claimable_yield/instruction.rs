@@ -1,5 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
 use {
     crate::{
         check_program_account,
@@ -37,6 +38,61 @@ pub enum ClaimableYieldInstruction {
     ///   `crate::extension::claimable_yield::instruction::InitializeInstructionData`
     InitializeMint,
 
+    /// Enable yield eligibility for a token account.
+    ///
+    /// This instruction allows marking a token account as eligible for yield claims.
+    /// Once enabled, the token account owner can claim yield directly.
+    ///
+    /// Authorization:
+    /// - If a yield authority is set on the mint, the yield authority must sign
+    /// - If no yield authority is set, the token account owner must sign
+    ///
+    /// Fails if:
+    /// - The account is already yield-eligible
+    /// - The signer is not the required authority (yield authority or owner)
+    ///
+    /// Accounts expected by this instruction:
+    ///
+    ///   * Single authority
+    ///   0. `[writable]` The token account to enable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[signer]` The yield authority (if set) or token account owner (if not).
+    ///
+    ///   * Multisignature authority
+    ///   0. `[writable]` The token account to enable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[]` The multisignature yield authority or token account owner.
+    ///   3. `..3+M` `[signer]` M signer accounts.
+    EnableYield,
+
+    /// Disable yield eligibility for a token account.
+    ///
+    /// This instruction allows revoking yield claim eligibility from a token account.
+    /// Once disabled, the account owner cannot claim yield directly using ClaimYieldTo
+    /// unless a yield authority exists to authorize the claim.
+    ///
+    /// Authorization:
+    /// - If a yield authority is set on the mint, the yield authority must sign
+    /// - If no yield authority is set, the token account owner must sign
+    ///
+    /// Fails if:
+    /// - The account is already not yield-eligible
+    /// - The signer is not the required authority (yield authority or owner)
+    ///
+    /// Accounts expected by this instruction:
+    ///
+    ///   * Single authority
+    ///   0. `[writable]` The token account to disable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[signer]` The yield authority (if set) or token account owner (if not).
+    ///
+    ///   * Multisignature authority
+    ///   0. `[writable]` The token account to disable yield for.
+    ///   1. `[]` The mint account.
+    ///   2. `[]` The multisignature yield authority or token account owner.
+    ///   3. `..3+M` `[signer]` M signer accounts.
+    DisableYield,
+
     /// Update the global yield index. Only supported for mints that include the
     /// `ClaimableYield` extension.
     ///
@@ -59,55 +115,41 @@ pub enum ClaimableYieldInstruction {
     ///   `crate::extension::claimable_yield::instruction::UpdateIndexInstructionData`
     UpdateIndex,
 
-    /// Configure a token account for claimable yield.
+    /// Claim all accrued yield for a token account to a target account.
     ///
-    /// The instruction fails if the claimable yield extension is already
-    /// configured, or if the mint was not initialized with claimable
-    /// yield support.
-    ///
-    /// The instruction fails if the `TokenInstruction::InitializeAccount`
-    /// instruction has not yet successfully executed for the token account.
-    ///
-    /// Upon success, yield accrual is enabled for this account starting
-    /// from the current global index.
-    ///
-    /// Accounts expected by this instruction:
-    ///
-    ///   0. `[writable]` The token account to configure.
-    ///   1. `[]` The mint account (to read global index).
-    ///   2. `[signer]` The account's owner.
-    ///
-    ///   * Multisignature authority
-    ///   0. `[writable]` The token account to configure.
-    ///   1. `[]` The mint account.
-    ///   2. `[]` The account's multisignature owner.
-    ///   3. `..3+M` `[signer]` M signer accounts.
-    ConfigureAccount,
-
-    /// Claim all accrued yield for a token account.
+    /// This instruction allows claiming yield with dynamic signer authorization:
+    /// - If the source account is yield-eligible, the token account owner must sign
+    /// - If the source account is not yield-eligible, the mint's yield authority must sign
     ///
     /// This instruction performs both soft and hard claims in a single operation:
     /// 1. Calculates all unclaimed yield based on the current global index
     /// 2. Adds any existing pending amount to the calculated yield
     /// 3. Mints new tokens equal to the total yield amount
-    /// 4. Adds the minted tokens to the account's spendable balance
-    /// 5. Updates the account's local index to the current global index
-    /// 6. Resets the pending amount to zero
+    /// 4. Adds the minted tokens to the target account's balance
+    /// 5. Updates the source account's local index to the current global index
+    /// 6. Resets the source account's pending amount to zero
     ///
-    /// The account extension must already be configured for claimable yield.
+    /// Fails if:
+    /// - Source account is yield-eligible but the signer is not the token account owner
+    /// - Source account is not yield-eligible and no yield authority is set on the mint
+    /// - Source account is not yield-eligible but the signer is not the yield authority
+    /// - Target account does not belong to the same mint
     ///
     /// Accounts expected by this instruction:
     ///
-    ///   0. `[writable]` The token account to claim yield for.
-    ///   1. `[writable]` The mint account (to increase supply).
-    ///   2. `[signer]` The account's owner.
+    ///   * Single signer (owner or yield authority)
+    ///   0. `[writable]` The source token account to claim yield from.
+    ///   1. `[writable]` The target token account to receive the minted tokens.
+    ///   2. `[writable]` The mint account (to increase supply).
+    ///   3. `[signer]` The owner (if yield-eligible) or yield authority (if not).
     ///
-    ///   * Multisignature authority
-    ///   0. `[writable]` The token account to claim yield for.
-    ///   1. `[writable]` The mint account.
-    ///   2. `[]` The account's multisignature owner.
-    ///   3. `..3+M` `[signer]` M signer accounts.
-    ClaimYield,
+    ///   * Multisignature signer
+    ///   0. `[writable]` The source token account to claim yield from.
+    ///   1. `[writable]` The target token account to receive the minted tokens.
+    ///   2. `[writable]` The mint account.
+    ///   3. `[]` The multisignature owner or yield authority.
+    ///   4. `..4+M` `[signer]` M signer accounts.
+    ClaimYieldTo,
 }
 
 /// Data expected by `ClaimableYieldInstruction::InitializeMint`
@@ -116,6 +158,10 @@ pub enum ClaimableYieldInstruction {
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct InitializeInstructionData {
+    /// The public key for the account which has the right to claim accrued yield for any token accounts not flagged as yield eligible. If None, any yield accrued to ineligible accounts will be lost.
+    pub claim_authority: OptionalNonZeroPubkey,
+    /// The public key for the account which has authority over which accounts can claim yield. If None, token account owners may always opt in/out of yield claiming.
+    pub eligibility_authority: OptionalNonZeroPubkey,
     /// The public key for the account that can update the global index
     pub index_authority: OptionalNonZeroPubkey,
     /// The initial global index value (fixed-point with 9 decimal places)
@@ -136,6 +182,8 @@ pub struct UpdateIndexInstructionData {
 pub fn initialize_mint(
     token_program_id: &Pubkey,
     mint: &Pubkey,
+    claim_authority: Option<Pubkey>,
+    eligibility_authority: Option<Pubkey>,
     index_authority: Option<Pubkey>,
     initial_index: u64,
 ) -> Result<Instruction, ProgramError> {
@@ -147,9 +195,63 @@ pub fn initialize_mint(
         TokenInstruction::ClaimableYieldExtension,
         ClaimableYieldInstruction::InitializeMint,
         &InitializeInstructionData {
+            claim_authority: claim_authority.try_into()?,
+            eligibility_authority: eligibility_authority.try_into()?,
             index_authority: index_authority.try_into()?,
             initial_index: initial_index.into(),
         },
+    ))
+}
+
+/// Create an `EnableYield` instruction
+pub fn enable_yield(
+    token_program_id: &Pubkey,
+    account: &Pubkey,
+    mint: &Pubkey,
+    eligibility_authority: &Pubkey,
+    signers: &[&Pubkey],
+) -> Result<Instruction, ProgramError> {
+    check_program_account(token_program_id)?;
+    let mut accounts = vec![
+        AccountMeta::new(*account, false),
+        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(*eligibility_authority, signers.is_empty()),
+    ];
+    for signer_pubkey in signers.iter() {
+        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
+    }
+    Ok(encode_instruction(
+        token_program_id,
+        accounts,
+        TokenInstruction::ClaimableYieldExtension,
+        ClaimableYieldInstruction::EnableYield,
+        &{},
+    ))
+}
+
+/// Create a `DisableYield` instruction
+pub fn disable_yield(
+    token_program_id: &Pubkey,
+    account: &Pubkey,
+    mint: &Pubkey,
+    eligibility_authority: &Pubkey,
+    signers: &[&Pubkey],
+) -> Result<Instruction, ProgramError> {
+    check_program_account(token_program_id)?;
+    let mut accounts = vec![
+        AccountMeta::new(*account, false),
+        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(*eligibility_authority, signers.is_empty()),
+    ];
+    for signer_pubkey in signers.iter() {
+        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
+    }
+    Ok(encode_instruction(
+        token_program_id,
+        accounts,
+        TokenInstruction::ClaimableYieldExtension,
+        ClaimableYieldInstruction::DisableYield,
+        &{},
     ))
 }
 
@@ -180,45 +282,21 @@ pub fn update_index(
     ))
 }
 
-/// Create a `ConfigureAccount` instruction
-pub fn configure_account(
+/// Create a `ClaimYieldTo` instruction
+pub fn claim_yield_to(
     token_program_id: &Pubkey,
-    account: &Pubkey,
+    source_account: &Pubkey,
+    target_account: &Pubkey,
     mint: &Pubkey,
-    owner: &Pubkey,
+    authority: &Pubkey,
     signers: &[&Pubkey],
 ) -> Result<Instruction, ProgramError> {
     check_program_account(token_program_id)?;
     let mut accounts = vec![
-        AccountMeta::new(*account, false),
-        AccountMeta::new_readonly(*mint, false),
-        AccountMeta::new_readonly(*owner, signers.is_empty()),
-    ];
-    for signer_pubkey in signers.iter() {
-        accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
-    }
-    Ok(encode_instruction(
-        token_program_id,
-        accounts,
-        TokenInstruction::ClaimableYieldExtension,
-        ClaimableYieldInstruction::ConfigureAccount,
-        &(),
-    ))
-}
-
-/// Create a `ClaimYield` instruction
-pub fn claim_yield(
-    token_program_id: &Pubkey,
-    account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
-    signers: &[&Pubkey],
-) -> Result<Instruction, ProgramError> {
-    check_program_account(token_program_id)?;
-    let mut accounts = vec![
-        AccountMeta::new(*account, false),
+        AccountMeta::new(*source_account, false),
+        AccountMeta::new(*target_account, false),
         AccountMeta::new(*mint, false), // Mint needs to be writable for supply update
-        AccountMeta::new_readonly(*owner, signers.is_empty()),
+        AccountMeta::new_readonly(*authority, signers.is_empty()),
     ];
     for signer_pubkey in signers.iter() {
         accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
@@ -227,7 +305,7 @@ pub fn claim_yield(
         token_program_id,
         accounts,
         TokenInstruction::ClaimableYieldExtension,
-        ClaimableYieldInstruction::ClaimYield,
+        ClaimableYieldInstruction::ClaimYieldTo,
         &(),
     ))
 }

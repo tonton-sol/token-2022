@@ -1,5 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use spl_pod::primitives::PodBool;
 use {
     crate::extension::{Extension, ExtensionType},
     bytemuck::{Pod, Zeroable},
@@ -45,6 +46,12 @@ pub fn calculate_yield(
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct ClaimableYieldConfig {
+    /// Who is allowed to actually lcaim
+    /// If token account is opted out, this would be eligible to claim, whether a "yield auth" is defined or not
+    pub claim_authority: OptionalNonZeroPubkey,
+    /// Who can flip the "yield eligible" bool
+    /// Authority which determines which accounts can claim yield
+    pub eligibility_authority: OptionalNonZeroPubkey,
     /// Authority that can update the global index
     pub index_authority: OptionalNonZeroPubkey,
     /// Global yield index (fixed-point representation with 9 decimal places)
@@ -81,9 +88,21 @@ pub struct ClaimableYieldAccount {
     pub pending_amount: PodU64,
     /// Local copy of the global index when this account was last updated
     pub local_index: PodU64,
+    /// Whether the owner of this account is eligible to claim yield
+    pub yield_eligible: PodBool,
 }
 
 impl ClaimableYieldAccount {
+    /// Set the yield eligibility status
+    pub fn set_yield_eligible(&mut self, eligible: bool) {
+        self.yield_eligible = PodBool::from(eligible);
+    }
+
+    /// Gets the yield eligibility status
+    pub fn get_yield_eligible(&self) -> bool {
+        self.yield_eligible.into()
+    }
+
     /// Get the pending amount as a u64
     pub fn get_pending_amount(&self) -> u64 {
         self.pending_amount.into()

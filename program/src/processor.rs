@@ -1000,6 +1000,32 @@ impl Processor {
                     )?;
                     extension.index_authority = new_authority.try_into()?;
                 }
+                AuthorityType::ClaimableYieldEligiblity => {
+                    let extension = mint.get_extension_mut::<ClaimableYieldConfig>()?;
+                    let maybe_authority: Option<Pubkey> = extension.eligibility_authority.into();
+                    let authority = maybe_authority.ok_or(TokenError::AuthorityTypeNotSupported)?;
+                    Self::validate_owner(
+                        program_id,
+                        &authority,
+                        authority_info,
+                        authority_info_data_len,
+                        account_info_iter.as_slice(),
+                    )?;
+                    extension.eligibility_authority = new_authority.try_into()?;
+                }
+                AuthorityType::ClaimableYieldClaim => {
+                    let extension = mint.get_extension_mut::<ClaimableYieldConfig>()?;
+                    let maybe_authority: Option<Pubkey> = extension.claim_authority.into();
+                    let authority = maybe_authority.ok_or(TokenError::AuthorityTypeNotSupported)?;
+                    Self::validate_owner(
+                        program_id,
+                        &authority,
+                        authority_info,
+                        authority_info_data_len,
+                        account_info_iter.as_slice(),
+                    )?;
+                    extension.claim_authority = new_authority.try_into()?;
+                }
                 _ => {
                     return Err(TokenError::AuthorityTypeNotSupported.into());
                 }
