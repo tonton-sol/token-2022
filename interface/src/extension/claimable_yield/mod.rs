@@ -51,7 +51,7 @@ pub struct ClaimableYieldConfig {
     pub claim_authority: OptionalNonZeroPubkey,
     /// Who can flip the "yield eligible" bool
     /// Authority which determines which accounts can claim yield
-    pub yield_authority: OptionalNonZeroPubkey,
+    pub eligibility_authority: OptionalNonZeroPubkey,
     /// Authority that can update the global index
     pub index_authority: OptionalNonZeroPubkey,
     /// Global yield index (fixed-point representation with 9 decimal places)

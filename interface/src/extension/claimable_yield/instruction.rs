@@ -161,7 +161,7 @@ pub struct InitializeInstructionData {
     /// The public key for the account which has the right to claim accrued yield for any token accounts not flagged as yield eligible. If None, any yield accrued to ineligible accounts will be lost.
     pub claim_authority: OptionalNonZeroPubkey,
     /// The public key for the account which has authority over which accounts can claim yield. If None, token account owners may always opt in/out of yield claiming.
-    pub yield_authority: OptionalNonZeroPubkey,
+    pub eligibility_authority: OptionalNonZeroPubkey,
     /// The public key for the account that can update the global index
     pub index_authority: OptionalNonZeroPubkey,
     /// The initial global index value (fixed-point with 9 decimal places)
@@ -183,7 +183,7 @@ pub fn initialize_mint(
     token_program_id: &Pubkey,
     mint: &Pubkey,
     claim_authority: Option<Pubkey>,
-    yield_authority: Option<Pubkey>,
+    eligibility_authority: Option<Pubkey>,
     index_authority: Option<Pubkey>,
     initial_index: u64,
 ) -> Result<Instruction, ProgramError> {
@@ -196,7 +196,7 @@ pub fn initialize_mint(
         ClaimableYieldInstruction::InitializeMint,
         &InitializeInstructionData {
             claim_authority: claim_authority.try_into()?,
-            yield_authority: yield_authority.try_into()?,
+            eligibility_authority: eligibility_authority.try_into()?,
             index_authority: index_authority.try_into()?,
             initial_index: initial_index.into(),
         },
@@ -208,14 +208,14 @@ pub fn enable_yield(
     token_program_id: &Pubkey,
     account: &Pubkey,
     mint: &Pubkey,
-    yield_authority: &Pubkey,
+    eligibility_authority: &Pubkey,
     signers: &[&Pubkey],
 ) -> Result<Instruction, ProgramError> {
     check_program_account(token_program_id)?;
     let mut accounts = vec![
         AccountMeta::new(*account, false),
         AccountMeta::new_readonly(*mint, false),
-        AccountMeta::new_readonly(*yield_authority, signers.is_empty()),
+        AccountMeta::new_readonly(*eligibility_authority, signers.is_empty()),
     ];
     for signer_pubkey in signers.iter() {
         accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));
@@ -234,14 +234,14 @@ pub fn disable_yield(
     token_program_id: &Pubkey,
     account: &Pubkey,
     mint: &Pubkey,
-    yield_authority: &Pubkey,
+    eligibility_authority: &Pubkey,
     signers: &[&Pubkey],
 ) -> Result<Instruction, ProgramError> {
     check_program_account(token_program_id)?;
     let mut accounts = vec![
         AccountMeta::new(*account, false),
         AccountMeta::new_readonly(*mint, false),
-        AccountMeta::new_readonly(*yield_authority, signers.is_empty()),
+        AccountMeta::new_readonly(*eligibility_authority, signers.is_empty()),
     ];
     for signer_pubkey in signers.iter() {
         accounts.push(AccountMeta::new_readonly(**signer_pubkey, true));

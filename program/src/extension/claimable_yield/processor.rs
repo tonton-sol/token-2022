@@ -28,7 +28,7 @@ fn process_initialize_mint(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
     claim_authority: &OptionalNonZeroPubkey,
-    yield_authority: &OptionalNonZeroPubkey,
+    eligibility_authority: &OptionalNonZeroPubkey,
     index_authority: &OptionalNonZeroPubkey,
     initial_index: u64,
 ) -> ProgramResult {
@@ -40,7 +40,7 @@ fn process_initialize_mint(
 
     let extension = mint.init_extension::<ClaimableYieldConfig>(true)?;
     extension.claim_authority = *claim_authority;
-    extension.yield_authority = *yield_authority;
+    extension.eligibility_authority = *eligibility_authority;
     extension.index_authority = *index_authority;
     extension.set_global_index(initial_index);
 
@@ -73,12 +73,12 @@ fn process_enable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progra
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
 
-    match Option::<Pubkey>::from(mint_extension.yield_authority) {
-        Some(yield_authority) => {
+    match Option::<Pubkey>::from(mint_extension.eligibility_authority) {
+        Some(eligibility_authority) => {
             // Yield authority is set, require yield authority signature
             Processor::validate_owner(
                 program_id,
-                &yield_authority,
+                &eligibility_authority,
                 authority_account_info,
                 authority_info_data_len,
                 account_info_iter.as_slice(),
@@ -127,12 +127,12 @@ fn process_disable_yield(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
     let mint = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
     let mint_extension = mint.get_extension::<ClaimableYieldConfig>()?;
 
-    match Option::<Pubkey>::from(mint_extension.yield_authority) {
-        Some(yield_authority) => {
+    match Option::<Pubkey>::from(mint_extension.eligibility_authority) {
+        Some(eligibility_authority) => {
             // Yield authority is set, require yield authority signature
             Processor::validate_owner(
                 program_id,
-                &yield_authority,
+                &eligibility_authority,
                 authority_account_info,
                 authority_info_data_len,
                 account_info_iter.as_slice(),
@@ -277,7 +277,7 @@ pub(crate) fn process_instruction(
             msg!("ClaimableYieldInstruction::InitializeMint");
             let InitializeInstructionData {
                 claim_authority,
-                yield_authority,
+                eligibility_authority,
                 index_authority,
                 initial_index,
             } = decode_instruction_data(input)?;
@@ -285,7 +285,7 @@ pub(crate) fn process_instruction(
                 program_id,
                 accounts,
                 claim_authority,
-                yield_authority,
+                eligibility_authority,
                 index_authority,
                 u64::from(*initial_index),
             )
